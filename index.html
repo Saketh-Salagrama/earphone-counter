@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="A simple Bluetooth earphone counter">
+    <title>Earphone Counter</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="script.js" defer></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="page-header">
+        <p class="eyebrow">Bluetooth earphone utility</p>
+        <h1>Earphone Counter</h1>
+        <p class="intro">
+          Count manually or experiment with optional hands-free media commands.
+          All data stays in this browser.
+        </p>
+      </header>
+
+      <section class="counter-card" aria-labelledby="counter-heading">
+        <h2 id="counter-heading">Current count</h2>
+        <output id="count" class="count" aria-live="polite" aria-atomic="true">0</output>
+        <button id="increment-button" class="button button-primary" type="button" aria-label="Increment count">
+          <span aria-hidden="true">+</span>1
+        </button>
+
+        <div class="secondary-actions" aria-label="Counter actions">
+          <button id="decrement-button" class="button button-secondary" type="button">
+            − Decrement
+          </button>
+          <button id="undo-button" class="button button-secondary" type="button">
+            Undo last
+          </button>
+          <button id="reset-button" class="button button-quiet" type="button">
+            Reset
+          </button>
+        </div>
+        <div class="summary-grid" aria-label="Count summary">
+          <div>
+            <span class="summary-label">Today</span>
+            <strong id="today-count">0</strong>
+          </div>
+          <div>
+            <span class="summary-label">Lifetime total</span>
+            <strong id="lifetime-count">0</strong>
+          </div>
+          <div>
+            <span class="summary-label">Local date</span>
+            <strong id="current-date">—</strong>
+          </div>
+        </div>
+        <p id="save-status" class="save-status" role="status">Local data ready</p>
+      </section>
+
+      <section class="history-card" aria-labelledby="history-heading">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Recorded activity</p>
+            <h2 id="history-heading">Daily history</h2>
+          </div>
+          <button id="clear-history-button" class="button button-quiet" type="button">
+            Clear history
+          </button>
+        </div>
+        <div id="history-list" class="history-list" aria-live="polite"></div>
+      </section>
+
+      <aside class="support-card" aria-labelledby="support-heading">
+        <div class="status-icon" aria-hidden="true">i</div>
+        <div>
+          <h2 id="support-heading">Media-control support</h2>
+          <p id="media-status"><strong>Not configured</strong></p>
+          <p id="media-detail" class="support-detail">
+            Media Session support varies by browser and operating system. This page
+            cannot verify a Bluetooth connection or promise physical button detection.
+          </p>
+          <div class="media-actions">
+            <button id="hands-free-button" class="button button-secondary" type="button">
+              Start Hands-Free Mode
+            </button>
+            <label class="diagnostic-toggle">
+              <input id="diagnostic-toggle" type="checkbox">
+              Enable diagnostic logging
+            </label>
+          </div>
+        </div>
+      </aside>
+
+      <p class="keyboard-hint">
+        Tip: press <kbd>Space</kbd> to add one when no button or input is focused.
+      </p>
+    </main>
+  </body>
+</html>
