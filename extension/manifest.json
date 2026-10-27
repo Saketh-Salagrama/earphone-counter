@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "Earphone Counter Media Keys",
+  "version": "1.0.0",
+  "description": "Forwards media-key commands delivered to Chrome to an open local Earphone Counter tab.",
+  "permissions": ["commands", "tabs"],
+  "host_permissions": [
+    "file:///*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "file:///*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ],
+      "js": ["content-bridge.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "commands": {
+    "media-play-pause": {
+      "suggested_key": {"default": "MediaPlayPause"},
+      "description": "Count a Play/Pause media key"
+    },
+    "media-next-track": {
+      "suggested_key": {"default": "MediaNextTrack"},
+      "description": "Count a Next Track media key"
+    },
+    "media-previous-track": {
+      "suggested_key": {"default": "MediaPrevTrack"},
+      "description": "Count a Previous Track media key"
+    },
+    "media-stop": {
+      "suggested_key": {"default": "MediaStop"},
+      "description": "Count a Stop media key"
+    }
+  }
+}

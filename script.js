@@ -37,6 +37,7 @@
     "nexttrack"
   ];
   const MEDIA_DUPLICATE_WINDOW_MS = 250;
+  const EXTENSION_EVENT_NAME = "earphone-counter-extension-command";
 
   function createEmptyState() {
     return {
@@ -236,8 +237,9 @@
     mediaDetail.textContent = detail;
   }
 
-  function handleMediaCommand(command) {
-    if (!mediaSessionReady) {
+  function handleMediaCommand(command, source = "Media Session action handler") {
+    const isExtensionCommand = source === "Chrome extension Commands API";
+    if (!mediaSessionReady && !isExtensionCommand) {
       logMedia("Ignored Media Session action during startup.", {
         action: command,
         reason: "session-not-ready"
@@ -262,11 +264,11 @@
     recordCountOperation(1, "media-control");
     setMediaStatus(
       `${formatMediaAction(command)} command received`,
-      `The browser delivered the "${command}" Media Session action. This does not prove which physical device sent it.`
+      `The ${source} delivered "${command}". This does not prove which physical device sent it.`
     );
     logMedia("Accepted Media Session action as one count.", {
       action: command,
-      source: "Media Session action handler"
+      source
     });
 
     // Keep the session available for another command. Audio play/pause events
@@ -280,6 +282,21 @@
         console.warn("Unable to resume silent media session.", error);
       });
     }
+  }
+
+  function handleExtensionCommand(event) {
+    const detail = event.detail;
+    const supportedActions = ["play", "pause", "nexttrack", "previoustrack", "stop"];
+    if (!detail || detail.source !== "earphone-counter-extension"
+      || !supportedActions.includes(detail.action)) {
+      return;
+    }
+
+    logMedia("Received command from optional Chrome extension bridge.", {
+      action: detail.action,
+      eventId: detail.eventId
+    });
+    handleMediaCommand(detail.action, "Chrome extension Commands API");
   }
 
   function updatePlaybackState(playbackState) {
@@ -632,6 +649,7 @@
   document.addEventListener("visibilitychange", handleVisibilityChange);
   window.addEventListener("pagehide", handlePageHide);
   window.addEventListener("pageshow", handlePageShow);
+  window.addEventListener(EXTENSION_EVENT_NAME, handleExtensionCommand);
 
   if (navigator.mediaSession && typeof navigator.mediaSession.setActionHandler === "function") {
     mediaMode = "stopped";

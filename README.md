@@ -114,6 +114,49 @@ use a browser/OS configuration that routes the command to this session, or use
 a native Android media-session application for reliable background media-button
 handling.
 
+## Optional Chrome extension bridge
+
+The `extension/` folder contains an optional Manifest V3 experiment using
+Chrome's supported Commands API media-key names:
+`MediaPlayPause`, `MediaNextTrack`, `MediaPrevTrack`, and `MediaStop`. Its
+service worker receives a command that Chrome actually assigns to the
+extension, sends it to open pages, and the content bridge forwards it to the
+counter page. Counter state remains entirely in the webpage's LocalStorage;
+the extension has no server, network request, or counter database.
+
+This is not a guaranteed workaround for YouTube media ownership. Chrome and
+the operating system can reserve a media key for another active media session,
+or a shortcut can be unavailable because of a collision or platform policy. In
+those cases the extension receives no command and cannot manufacture one. The
+extension also cannot identify the physical device that caused a command. The
+webpage's 250 ms action-specific duplicate guard covers a command delivered
+through both the page Media Session and extension bridge.
+
+### Install and test the extension locally
+
+1. Open `chrome://extensions`, enable **Developer mode**, and choose **Load
+   unpacked**.
+2. Select this repository's `extension` folder. For a `file://` counter page,
+   enable **Allow access to file URLs** for the extension.
+3. Open or reload the counter page. Visit the extension's
+   `chrome://extensions/shortcuts` entry and confirm the four media-key
+   commands are assigned. Chrome may show a shortcut conflict or leave a
+   command unassigned.
+4. Enable diagnostic logging, then press the physical media buttons. A
+   received extension command is logged separately from a Media Session action,
+   and only the webpage applies the count.
+5. Test with the counter visible, with YouTube paused in another tab, and with
+   YouTube actively playing. Compare the diagnostic output. A missing command
+   during active YouTube playback may indicate Chrome/OS media-session priority,
+   not a JavaScript failure.
+
+Physical Bluetooth testing is required to determine whether this Chrome
+installation assigns the keys to the extension while YouTube plays. This
+project has not made that hardware test and does not claim that the extension
+solves cross-tab media ownership. For reliable Android background media-button
+handling, a native Android app using Android media-session APIs remains the
+next-best architecture.
+
 - The page does not scan for devices or request microphone/Bluetooth
   permissions.
 - It does not claim that an earphone is connected.
