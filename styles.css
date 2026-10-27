@@ -328,7 +328,7 @@ kbd {
   }
 
   .media-actions {
-    grid-template-columns: auto 1fr;
+    grid-template-columns: auto auto 1fr;
     align-items: center;
   }
 }

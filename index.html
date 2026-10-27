@@ -71,14 +71,19 @@
         <div class="status-icon" aria-hidden="true">i</div>
         <div>
           <h2 id="support-heading">Media-control support</h2>
-          <p id="media-status"><strong>Not configured</strong></p>
+          <p id="media-status" role="status" aria-live="polite">
+            <strong>Media Session API unsupported</strong>
+          </p>
           <p id="media-detail" class="support-detail">
-            Media Session support varies by browser and operating system. This page
-            cannot verify a Bluetooth connection or promise physical button detection.
+            The optional silent session has not started. This page cannot verify a
+            Bluetooth connection or promise physical button detection.
           </p>
           <div class="media-actions">
-            <button id="hands-free-button" class="button button-secondary" type="button">
-              Start Hands-Free Mode
+            <button id="start-media-button" class="button button-secondary" type="button">
+              Start Silent Media Session
+            </button>
+            <button id="stop-media-button" class="button button-quiet" type="button" disabled>
+              Stop Silent Media Session
             </button>
             <label class="diagnostic-toggle">
               <input id="diagnostic-toggle" type="checkbox">

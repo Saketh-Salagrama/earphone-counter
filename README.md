@@ -68,31 +68,42 @@ without using hard-coded example counts.
 
 ## Experimental Bluetooth media controls
 
-The optional **Start Hands-Free Mode** button registers Media Session API
-handlers for `play` and `pause` after a user gesture. If the browser invokes
-one of those handlers, one count is recorded with a short duplicate-command
-guard. This is an experiment, not Bluetooth detection:
+The optional **Start Silent Media Session** button creates a one-second,
+locally generated PCM WAV containing digital silence, then starts it only after
+the user clicks the button. The audio is looped so the browser has an active
+media session to experiment with. **Stop Silent Media Session** pauses the
+audio, unregisters handlers, clears metadata, removes the audio element, and
+revokes its object URL. Starting or stopping does not change the counter.
+
+Media Session API handlers for `play` and `pause` are registered only for the
+active session. If the browser actually invokes one of those handlers, one
+count is recorded with a short duplicate-command guard. Audio `play` and
+`pause` events are diagnostic-only and never increment the counter. This is an
+experiment, not Bluetooth detection:
 
 - The page does not scan for devices or request microphone/Bluetooth
   permissions.
 - It does not claim that an earphone is connected.
 - Media Session support and physical button exposure vary by browser,
   operating system, browser tab state, and device.
-- A configured status means handlers were registered, not that a physical
-  button works. A “command received” status means the browser delivered a
-  Media Session action to the page; it still does not prove universal support.
+- A “session active” status means silent playback and handlers started, not
+  that a physical button works. A “command received” status means the browser
+  delivered a Media Session action to the page; it still does not prove which
+  device sent it or universal support.
+- The app reports playback failure separately and never claims success merely
+  because a media session was created.
 - If the API is unavailable or rejected, manual counting remains functional.
 - Enable **diagnostic logging** before testing to see relevant events in the
   browser console. No logs are sent anywhere.
 
-For a Windows Chrome/Edge experiment, open the page in a focused tab, enable
-diagnostic logging, click Start Hands-Free Mode, and inspect DevTools Console
-output while pressing Play/Pause on a supported headset. Repeat with Android
-Chrome and a connected headset, keeping the page available and checking the
-console. Results can differ by browser version, Android/Windows media-session
-integration, headset firmware, and whether the page is active. A lack of a
-command is an inconclusive unsupported result, not proof that the headset is
-not connected.
+For a Windows Chrome/Edge experiment, open the page, enable diagnostic
+logging, click Start Silent Media Session, and inspect DevTools Console output
+while pressing Play/Pause on a supported headset. Click Stop when finished.
+Repeat with Android Chrome and a connected headset, keeping the page available
+and checking the console. Results can differ by browser version,
+Android/Windows media-session integration, playback policy, headset firmware,
+and whether the page is active. A lack of a command is an inconclusive
+unsupported result, not proof that the headset is not connected.
 
 ## Manual test checklist
 
@@ -113,9 +124,17 @@ not connected.
    accept it and confirm the history and lifetime total are empty.
 9. Enter an invalid value such as `{bad json` for the storage key in DevTools,
    reload, and confirm the page reports a safe initialization without errors.
-10. Enable diagnostic logging and test Hands-Free Mode where available. Confirm
-    unsupported/configured/command-received wording is honest and manual
-    controls still work.
+10. Enable diagnostic logging and test Start/Stop Silent Media Session where
+    available. Confirm starting and stopping do not change the count, and that
+    unsupported, starting, active, failure, stopped, and command-received
+    wording is honest. Manual controls must still work.
 11. Test keyboard focus, visible focus rings, narrow phone width, tablet width,
     dark mode, and a browser with JavaScript disabled as a graceful static
     page failure mode.
+
+For a physical-device test, start from a fresh count, start the silent session,
+press the headset Play/Pause button once, and verify the count changes only if
+the browser reports a `play` or `pause` action. Press it twice and verify the
+two commands are not collapsed unless they arrive within the duplicate-command
+guard window. Test browser-generated media controls separately; the page cannot
+reliably distinguish those from a physical headset command.
