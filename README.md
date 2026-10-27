@@ -94,6 +94,14 @@ broad global debounce. Media Session callbacks do not include a universal
 hardware event ID, so a webpage cannot perfectly distinguish an OS duplicate
 callback from two extremely rapid presses of the same action.
 
+The page does not stop or unregister the session when it becomes hidden,
+backgrounded, or placed in the back-forward cache. It logs `visibilitychange`,
+`pagehide`, and `pageshow`, along with audio `stalled`, `suspend`, `waiting`,
+and `ended` events. When returning to the page, it makes one guarded attempt to
+resume a session that the browser paused; this attempt never increments the
+counter. The page does not use autoplay tricks, audible keep-alive audio, or
+CPU-intensive loops.
+
 - The page does not scan for devices or request microphone/Bluetooth
   permissions.
 - It does not claim that an earphone is connected.
@@ -116,8 +124,11 @@ headset. Click Stop when finished.
 Repeat with Android Chrome and a connected headset, keeping the page available
 and checking the console. Results can differ by browser version,
 Android/Windows media-session integration, playback policy, headset firmware,
-and whether the page is active. A lack of a command is an inconclusive
-unsupported result, not proof that the headset is not connected.
+whether the page is active, and whether Android suspends the tab or audio
+session. A lack of a command is an inconclusive unsupported result, not proof
+that the headset is not connected. Background delivery cannot be guaranteed
+by a webpage; if Chrome or Android suspends the page/session, a native Android
+media-session implementation is required for reliable background handling.
 
 ## Manual test checklist
 
@@ -143,7 +154,11 @@ unsupported result, not proof that the headset is not connected.
     the console lists each registered or rejected action. Manually invoke or
     physically test each exposed action and confirm its exact action name is
     logged and each accepted action increments once.
-11. Test keyboard focus, visible focus rings, narrow phone width, tablet width,
+11. Switch to another tab and return. Confirm visibility, pagehide/pageshow,
+    and audio-health diagnostics appear, and that no lifecycle event changes
+    the count. If the browser pauses audio, confirm the guarded resume attempt
+    reports the result honestly.
+12. Test keyboard focus, visible focus rings, narrow phone width, tablet width,
     dark mode, and a browser with JavaScript disabled as a graceful static
     page failure mode.
 

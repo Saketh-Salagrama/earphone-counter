@@ -361,6 +361,10 @@
       silentAudio.removeEventListener("play", handleAudioPlay);
       silentAudio.removeEventListener("pause", handleAudioPause);
       silentAudio.removeEventListener("error", handleAudioError);
+      silentAudio.removeEventListener("stalled", handleAudioHealthEvent);
+      silentAudio.removeEventListener("suspend", handleAudioHealthEvent);
+      silentAudio.removeEventListener("waiting", handleAudioHealthEvent);
+      silentAudio.removeEventListener("ended", handleAudioHealthEvent);
       silentAudio.remove();
       silentAudio = null;
     }
@@ -391,6 +395,75 @@
     logMedia("Silent audio reported an error.");
   }
 
+  function logAudioHealth(eventName) {
+    if (!silentAudio) {
+      logMedia(`Audio ${eventName} event received without an active audio element.`);
+      return;
+    }
+
+    logMedia(`Audio ${eventName} event received; no count recorded.`, {
+      paused: silentAudio.paused,
+      ended: silentAudio.ended,
+      readyState: silentAudio.readyState,
+      visibilityState: document.visibilityState
+    });
+  }
+
+  function handleAudioHealthEvent(event) {
+    logAudioHealth(event.type);
+  }
+
+  function attemptResumeAfterVisibility() {
+    if (mediaMode !== "active" || !silentAudio || !silentAudio.paused) {
+      return;
+    }
+
+    logMedia("Silent audio is paused after the page became visible; attempting one lifecycle resume.", {
+      visibilityState: document.visibilityState
+    });
+    silentAudio.play().then(() => {
+      updatePlaybackState("playing");
+      logMedia("Silent audio resumed after visibility change.");
+    }).catch((error) => {
+      setMediaStatus(
+        "Playback suspended in background",
+        "The browser paused the silent session. Start it again if media commands stop arriving."
+      );
+      logMedia("Silent audio could not resume after visibility change.", {
+        error: error.name
+      });
+    });
+  }
+
+  function handleVisibilityChange() {
+    logMedia(`Page became ${document.visibilityState}.`, {
+      audioPaused: silentAudio ? silentAudio.paused : null,
+      mediaMode
+    });
+    refreshDateDisplay();
+    if (document.visibilityState === "visible") {
+      attemptResumeAfterVisibility();
+    }
+  }
+
+  function handlePageHide(event) {
+    logMedia("Pagehide received; keeping media handlers and audio session intact.", {
+      persisted: event.persisted,
+      audioPaused: silentAudio ? silentAudio.paused : null,
+      mediaMode
+    });
+  }
+
+  function handlePageShow(event) {
+    logMedia("Pageshow received; checking media session health.", {
+      persisted: event.persisted,
+      audioPaused: silentAudio ? silentAudio.paused : null,
+      mediaMode
+    });
+    refreshDateDisplay();
+    attemptResumeAfterVisibility();
+  }
+
   async function startSilentSession() {
     if (!navigator.mediaSession || typeof navigator.mediaSession.setActionHandler !== "function") {
       mediaMode = "unsupported";
@@ -417,6 +490,9 @@
     silentAudio.addEventListener("play", handleAudioPlay);
     silentAudio.addEventListener("pause", handleAudioPause);
     silentAudio.addEventListener("error", handleAudioError);
+    ["stalled", "suspend", "waiting", "ended"].forEach((eventName) => {
+      silentAudio.addEventListener(eventName, handleAudioHealthEvent);
+    });
     document.body.append(silentAudio);
 
     try {
@@ -541,7 +617,9 @@
   stopMediaButton.addEventListener("click", stopSilentSession);
   document.addEventListener("keydown", handleKeydown);
   window.addEventListener("focus", refreshDateDisplay);
-  document.addEventListener("visibilitychange", refreshDateDisplay);
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+  window.addEventListener("pagehide", handlePageHide);
+  window.addEventListener("pageshow", handlePageShow);
 
   if (navigator.mediaSession && typeof navigator.mediaSession.setActionHandler === "function") {
     mediaMode = "stopped";
