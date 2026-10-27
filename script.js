@@ -441,6 +441,12 @@
       mediaMode
     });
     refreshDateDisplay();
+    if (mediaMode === "active" && document.visibilityState === "hidden") {
+      setMediaStatus(
+        "Session active in background; browser media priority is unknown",
+        "Another tab or application may own hardware media commands. This page cannot override Chrome's Media Session priority."
+      );
+    }
     if (document.visibilityState === "visible") {
       attemptResumeAfterVisibility();
     }
@@ -452,6 +458,12 @@
       audioPaused: silentAudio ? silentAudio.paused : null,
       mediaMode
     });
+    if (mediaMode === "active") {
+      setMediaStatus(
+        "Session active; background delivery is browser-controlled",
+        "The counter remains registered, but another tab's active media session may receive the next hardware command."
+      );
+    }
   }
 
   function handlePageShow(event) {

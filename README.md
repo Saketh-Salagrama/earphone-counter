@@ -102,6 +102,18 @@ resume a session that the browser paused; this attempt never increments the
 counter. The page does not use autoplay tricks, audible keep-alive audio, or
 CPU-intensive loops.
 
+Chrome and the operating system still choose which tab owns hardware media
+commands. If YouTube or another tab is actively playing audio or video, its
+Media Session may take priority even when the sound is routed to laptop
+speakers. There is no supported webpage API to force the earphone command to
+this tab, and the counter cannot observe a command that Chrome does not
+deliver to it. The background status therefore distinguishes “registered” from
+“command received”; it does not claim that background detection is guaranteed.
+The feasible alternatives are to pause/stop the competing tab while testing,
+use a browser/OS configuration that routes the command to this session, or use
+a native Android media-session application for reliable background media-button
+handling.
+
 - The page does not scan for devices or request microphone/Bluetooth
   permissions.
 - It does not claim that an earphone is connected.
@@ -168,6 +180,20 @@ that each button increments only when Chrome logs its corresponding Media
 Session action. Test two rapid presses of the same button and alternating
 buttons separately; the page cannot reliably distinguish a browser duplicate
 callback from two identical presses inside the 250 ms guard window.
+
+To test media-session conflicts specifically:
+
+1. Start the session with the counter visible and confirm its active status.
+2. Switch to another tab with media paused; press the headset button and check
+   whether the counter receives and logs the action.
+3. Start YouTube or other media in that tab, with output routed to the laptop
+   speakers. Press the headset button again and inspect both tabs' diagnostics.
+4. If the counter receives no action, that is browser media-session priority,
+   not a JavaScript event the page can recover or synthesize. Pause the other
+   tab and repeat to compare.
+5. Return to the counter and verify its count/history changed only for actions
+   Chrome actually delivered. Lock/unlock testing is likewise subject to
+   Android background restrictions.
 
 Android Chrome may not expose headset actions to a webpage at all, even when
 the headset is connected. JavaScript cannot directly listen to every Bluetooth
