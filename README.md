@@ -75,11 +75,24 @@ media session to experiment with. **Stop Silent Media Session** pauses the
 audio, unregisters handlers, clears metadata, removes the audio element, and
 revokes its object URL. Starting or stopping does not change the counter.
 
-Media Session API handlers for `play` and `pause` are registered only for the
-active session. If the browser actually invokes one of those handlers, one
-count is recorded with a short duplicate-command guard. Audio `play` and
-`pause` events are diagnostic-only and never increment the counter. This is an
-experiment, not Bluetooth detection:
+Media Session API handlers are attempted for `play`, `pause`, `seekbackward`,
+`seekforward`, `previoustrack`, and `nexttrack` for the active session. Browsers
+may reject individual actions; the diagnostic log records which handlers were
+actually registered. If the browser invokes any registered action handler, one
+count is recorded regardless of action type. Repeated delivery of the same
+action within a short 250 ms browser-event window is ignored, while different
+actions are not globally suppressed. Audio `play` and `pause` events are
+diagnostic-only and never increment the counter. This is an experiment, not
+Bluetooth detection:
+
+The action handlers are registered before the awaited `audio.play()` call so
+the first command is not lost during startup. The UI reports the session as
+active only after playback succeeds. The deduplication guard is action-specific:
+an immediate repeated `pause` is treated as duplicate browser delivery, but a
+legitimate alternating `pause` then `play` sequence is not discarded by one
+broad global debounce. Media Session callbacks do not include a universal
+hardware event ID, so a webpage cannot perfectly distinguish an OS duplicate
+callback from two extremely rapid presses of the same action.
 
 - The page does not scan for devices or request microphone/Bluetooth
   permissions.
@@ -98,7 +111,8 @@ experiment, not Bluetooth detection:
 
 For a Windows Chrome/Edge experiment, open the page, enable diagnostic
 logging, click Start Silent Media Session, and inspect DevTools Console output
-while pressing Play/Pause on a supported headset. Click Stop when finished.
+while pressing Play/Pause, Next, Previous, or seek controls on a supported
+headset. Click Stop when finished.
 Repeat with Android Chrome and a connected headset, keeping the page available
 and checking the console. Results can differ by browser version,
 Android/Windows media-session integration, playback policy, headset firmware,
@@ -126,15 +140,24 @@ unsupported result, not proof that the headset is not connected.
    reload, and confirm the page reports a safe initialization without errors.
 10. Enable diagnostic logging and test Start/Stop Silent Media Session where
     available. Confirm starting and stopping do not change the count, and that
-    unsupported, starting, active, failure, stopped, and command-received
-    wording is honest. Manual controls must still work.
+    the console lists each registered or rejected action. Manually invoke or
+    physically test each exposed action and confirm its exact action name is
+    logged and each accepted action increments once.
 11. Test keyboard focus, visible focus rings, narrow phone width, tablet width,
     dark mode, and a browser with JavaScript disabled as a graceful static
     page failure mode.
 
 For a physical-device test, start from a fresh count, start the silent session,
-press the headset Play/Pause button once, and verify the count changes only if
-the browser reports a `play` or `pause` action. Press it twice and verify the
-two commands are not collapsed unless they arrive within the duplicate-command
-guard window. Test browser-generated media controls separately; the page cannot
-reliably distinguish those from a physical headset command.
+then test Play/Pause, Next, Previous, and any seek buttons separately. Verify
+that each button increments only when Chrome logs its corresponding Media
+Session action. Test two rapid presses of the same button and alternating
+buttons separately; the page cannot reliably distinguish a browser duplicate
+callback from two identical presses inside the 250 ms guard window.
+
+Android Chrome may not expose headset actions to a webpage at all, even when
+the headset is connected. JavaScript cannot directly listen to every Bluetooth
+hardware button. Reliable access to Android media-button events generally
+requires a native Android application using Android media-session APIs such as
+`MediaSession`/`MediaSessionCompat` and, where appropriate, a media button
+receiver or `MediaBrowserService`, subject to Android background and audio
+focus rules.

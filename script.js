@@ -25,7 +25,18 @@
   let silentAudio = null;
   let silentAudioUrl = null;
   let mediaHandlersRegistered = false;
-  let lastMediaCommandAt = 0;
+  let mediaSessionReady = false;
+  const registeredMediaActions = new Set();
+  const lastMediaActionAt = new Map();
+  const MEDIA_ACTIONS = [
+    "play",
+    "pause",
+    "seekbackward",
+    "seekforward",
+    "previoustrack",
+    "nexttrack"
+  ];
+  const MEDIA_DUPLICATE_WINDOW_MS = 250;
 
   function createEmptyState() {
     return {
@@ -188,231 +199,272 @@
   }
 
   function createSilentWavBlob() {
-      const sampleRate = 8000;
-      const sampleCount = sampleRate;
-      const dataSize = sampleCount;
-      const buffer = new ArrayBuffer(44 + dataSize);
-      const view = new DataView(buffer);
+    const sampleRate = 8000;
+    const sampleCount = sampleRate;
+    const dataSize = sampleCount;
+    const buffer = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(buffer);
 
-      function writeText(offset, text) {
-        for (let index = 0; index < text.length; index += 1) {
-          view.setUint8(offset + index, text.charCodeAt(index));
+    function writeText(offset, text) {
+      for (let index = 0; index < text.length; index += 1) {
+        view.setUint8(offset + index, text.charCodeAt(index));
+      }
+    }
+
+    writeText(0, "RIFF");
+    view.setUint32(4, 36 + dataSize, true);
+    writeText(8, "WAVE");
+    writeText(12, "fmt ");
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate, true);
+    view.setUint16(32, 1, true);
+    view.setUint16(34, 8, true);
+    writeText(36, "data");
+    view.setUint32(40, dataSize, true);
+    for (let index = 0; index < dataSize; index += 1) {
+      view.setUint8(44 + index, 128);
+    }
+
+    return new Blob([buffer], { type: "audio/wav" });
   }
-      }
 
-      writeText(0, "RIFF");
-      view.setUint32(4, 36 + dataSize, true);
-      writeText(8, "WAVE");
-      writeText(12, "fmt ");
-      view.setUint32(16, 16, true);
-      view.setUint16(20, 1, true);
-      view.setUint16(22, 1, true);
-      view.setUint32(24, sampleRate, true);
-      view.setUint32(28, sampleRate, true);
-      view.setUint16(32, 1, true);
-      view.setUint16(34, 8, true);
-      writeText(36, "data");
-      view.setUint32(40, dataSize, true);
-      for (let index = 0; index < dataSize; index += 1) {
-        view.setUint8(44 + index, 128);
-      }
+  function setMediaStatus(status, detail) {
+    mediaStatus.innerHTML = `<strong>${status}</strong>`;
+    mediaDetail.textContent = detail;
+  }
 
-      return new Blob([buffer], { type: "audio/wav" });
-    }
-
-    function setMediaStatus(status, detail) {
-      mediaStatus.innerHTML = `<strong>${status}</strong>`;
-      mediaDetail.textContent = detail;
-    }
-
-    function handleMediaCommand(command) {
-      const now = Date.now();
-      if (now - lastMediaCommandAt < 500) {
-        logMedia("Ignored a duplicate media command.", { command });
-        return;
-      }
-
-      lastMediaCommandAt = now;
-      recordCountOperation(1, "media-control");
-      setMediaStatus(
-        `${command === "play" ? "Play" : "Pause"} command received`,
-        "The browser delivered a Media Session action. This does not prove which physical device sent it."
-      );
-      logMedia("Received Media Session action.", { command });
-
-      // Keep the silent session active for another possible command. Audio
-      // play/pause events themselves never call recordCountOperation.
-      if (silentAudio && silentAudio.paused) {
-        silentAudio.play().catch((error) => {
-          setMediaStatus(
-            "Playback blocked or failed",
-            "The media command arrived, but the silent session could not resume."
-          );
-          console.warn("Unable to resume silent media session.", error);
-        });
-      }
-    }
-
-    function registerMediaHandlers() {
-      if (!navigator.mediaSession || typeof navigator.mediaSession.setActionHandler !== "function") {
-        return false;
-      }
-
-      try {
-        ["play", "pause"].forEach((action) => {
-          navigator.mediaSession.setActionHandler(action, () => handleMediaCommand(action));
-        });
-        mediaHandlersRegistered = true;
-        return true;
-      } catch (error) {
-        mediaHandlersRegistered = false;
-        console.warn("Unable to configure Media Session handlers.", error);
-        return false;
-      }
-    }
-
-    function unregisterMediaHandlers() {
-      if (!navigator.mediaSession || typeof navigator.mediaSession.setActionHandler !== "function") {
-        return true;
-      }
-
-      let cleanupSucceeded = true;
-      ["play", "pause"].forEach((action) => {
-        try {
-          navigator.mediaSession.setActionHandler(action, null);
-        } catch (error) {
-          cleanupSucceeded = false;
-          console.warn(`Unable to remove ${action} Media Session handler.`, error);
-        }
+  function handleMediaCommand(command) {
+    if (!mediaSessionReady) {
+      logMedia("Ignored Media Session action during startup.", {
+        action: command,
+        reason: "session-not-ready"
       });
-      mediaHandlersRegistered = false;
-      return cleanupSucceeded;
+      return;
     }
 
-    function cleanupSilentSession() {
-      let cleanupSucceeded = unregisterMediaHandlers();
-      if (navigator.mediaSession) {
-        try {
-          navigator.mediaSession.playbackState = "none";
-          navigator.mediaSession.metadata = null;
-        } catch (error) {
-          cleanupSucceeded = false;
-          console.warn("Unable to clear Media Session state.", error);
-        }
-      }
+    const now = Date.now();
+    const previousTime = lastMediaActionAt.get(command);
+    const isDuplicate = previousTime !== undefined
+      && now - previousTime < MEDIA_DUPLICATE_WINDOW_MS;
 
-      if (silentAudio) {
-        silentAudio.pause();
-        silentAudio.removeEventListener("play", handleAudioPlay);
-        silentAudio.removeEventListener("pause", handleAudioPause);
-        silentAudio.removeEventListener("error", handleAudioError);
-        silentAudio.remove();
-        silentAudio = null;
-      }
-      if (silentAudioUrl) {
-        URL.revokeObjectURL(silentAudioUrl);
-        silentAudioUrl = null;
-      }
-      stopMediaButton.disabled = true;
-      startMediaButton.disabled = false;
-    return cleanupSucceeded;
+    if (isDuplicate) {
+      logMedia("Ignored duplicate Media Session action.", {
+        command,
+        elapsedMs: now - previousTime
+      });
+      return;
     }
 
-    function handleAudioPlay() {
-      logMedia("Silent audio playback started.");
-    }
+    lastMediaActionAt.set(command, now);
+    recordCountOperation(1, "media-control");
+    setMediaStatus(
+      `${formatMediaAction(command)} command received`,
+      `The browser delivered the "${command}" Media Session action. This does not prove which physical device sent it.`
+    );
+    logMedia("Accepted Media Session action as one count.", {
+      action: command,
+      source: "Media Session action handler"
+    });
 
-    function handleAudioPause() {
-      logMedia("Silent audio playback paused.");
-    }
-
-    function handleAudioError() {
-      setMediaStatus(
-        "Playback blocked or failed",
-        "The browser could not play the locally generated silent audio. Manual counting remains available."
-      );
-      logMedia("Silent audio reported an error.");
-    }
-
-    async function startSilentSession() {
-      if (!navigator.mediaSession || typeof navigator.mediaSession.setActionHandler !== "function") {
-        mediaMode = "unsupported";
-        setMediaStatus(
-          "Media Session API unsupported",
-          "This browser cannot register media action handlers. Manual counting remains fully functional."
-        );
-        return;
-      }
-
-      cleanupSilentSession();
-      setMediaStatus(
-        "Starting silent session",
-        "Preparing a locally generated silent audio loop after your explicit gesture."
-      );
-
-      silentAudioUrl = URL.createObjectURL(createSilentWavBlob());
-      silentAudio = document.createElement("audio");
-      silentAudio.src = silentAudioUrl;
-      silentAudio.loop = true;
-      silentAudio.preload = "auto";
-      silentAudio.setAttribute("aria-hidden", "true");
-      silentAudio.addEventListener("play", handleAudioPlay);
-      silentAudio.addEventListener("pause", handleAudioPause);
-      silentAudio.addEventListener("error", handleAudioError);
-      document.body.append(silentAudio);
-
-      if (!registerMediaHandlers()) {
-        cleanupSilentSession();
-        mediaMode = "unsupported";
-        setMediaStatus(
-          "Media Session API unsupported",
-          "The browser rejected media action handlers. Manual counting remains fully functional."
-        );
-        return;
-      }
-
-      try {
-        navigator.mediaSession.metadata = new MediaMetadata({
-          title: "Earphone Counter (silent)",
-          artist: "Local Earphone Counter",
-          album: "Experimental media session"
-        });
-        navigator.mediaSession.playbackState = "playing";
-        await silentAudio.play();
-        mediaMode = "active";
-        startMediaButton.disabled = true;
-        stopMediaButton.disabled = false;
-        setMediaStatus(
-          "Session active; physical button detection not yet verified",
-          "The silent loop is playing locally. A delivered Play/Pause command will count once, but Android Chrome may not forward it."
-        );
-      } catch (error) {
-        console.warn("Unable to start silent media session.", error);
-        cleanupSilentSession();
-        mediaMode = "failed";
+    // Keep the session available for another command. Audio play/pause events
+    // themselves never call recordCountOperation.
+    if (silentAudio && silentAudio.paused) {
+      silentAudio.play().catch((error) => {
         setMediaStatus(
           "Playback blocked or failed",
-          "The browser did not allow the silent session to start. Manual counting remains fully functional."
+          "The media command arrived, but the silent session could not resume."
         );
+        console.warn("Unable to resume silent media session.", error);
+      });
+    }
+  }
+
+  function updatePlaybackState(playbackState) {
+    if (!navigator.mediaSession) {
+      return;
+    }
+
+    try {
+      navigator.mediaSession.playbackState = playbackState;
+    } catch (error) {
+      logMedia("Unable to update Media Session playback state.", { playbackState });
+    }
+  }
+
+  function formatMediaAction(action) {
+    return action
+      .replace("previoustrack", "Previous track")
+      .replace("nexttrack", "Next track")
+      .replace("seekbackward", "Seek backward")
+      .replace("seekforward", "Seek forward")
+      .replace("play", "Play")
+      .replace("pause", "Pause");
+  }
+
+  function registerMediaHandlers() {
+    if (!navigator.mediaSession || typeof navigator.mediaSession.setActionHandler !== "function") {
+      return false;
+    }
+
+    registeredMediaActions.clear();
+    MEDIA_ACTIONS.forEach((action) => {
+      try {
+        navigator.mediaSession.setActionHandler(action, () => handleMediaCommand(action));
+        registeredMediaActions.add(action);
+        logMedia("Registered Media Session action handler.", { action });
+      } catch (error) {
+        logMedia("Media Session action is unsupported or rejected.", { action });
+        console.warn(`Unable to configure ${action} Media Session handler.`, error);
+      }
+    });
+    mediaHandlersRegistered = registeredMediaActions.size > 0;
+    return mediaHandlersRegistered;
+  }
+
+  function unregisterMediaHandlers() {
+    if (!navigator.mediaSession || typeof navigator.mediaSession.setActionHandler !== "function") {
+      return true;
+    }
+
+    let cleanupSucceeded = true;
+    registeredMediaActions.forEach((action) => {
+      try {
+        navigator.mediaSession.setActionHandler(action, null);
+      } catch (error) {
+        cleanupSucceeded = false;
+        console.warn(`Unable to remove ${action} Media Session handler.`, error);
+      }
+    });
+    registeredMediaActions.clear();
+    mediaHandlersRegistered = false;
+    return cleanupSucceeded;
+  }
+
+  function cleanupSilentSession() {
+    mediaSessionReady = false;
+    let cleanupSucceeded = unregisterMediaHandlers();
+    if (navigator.mediaSession) {
+      try {
+        navigator.mediaSession.playbackState = "none";
+        navigator.mediaSession.metadata = null;
+      } catch (error) {
+        cleanupSucceeded = false;
+        console.warn("Unable to clear Media Session state.", error);
       }
     }
 
-    function stopSilentSession() {
-      const cleanupSucceeded = cleanupSilentSession();
-      mediaMode = "stopped";
-      if (cleanupSucceeded) {
-        setMediaStatus(
-          "Session stopped",
-          "No media session is active. Stopping the session does not change the counter."
-        );
-      } else {
-        setMediaStatus(
-          "Session stopped or cleanup failed",
-          "The counter was not changed, but the browser rejected part of media-session cleanup."
-        );
-      }
-      logMedia("Silent media session stopped.");
+    if (silentAudio) {
+      silentAudio.pause();
+      silentAudio.removeEventListener("play", handleAudioPlay);
+      silentAudio.removeEventListener("pause", handleAudioPause);
+      silentAudio.removeEventListener("error", handleAudioError);
+      silentAudio.remove();
+      silentAudio = null;
     }
+    if (silentAudioUrl) {
+      URL.revokeObjectURL(silentAudioUrl);
+      silentAudioUrl = null;
+    }
+    stopMediaButton.disabled = true;
+    startMediaButton.disabled = false;
+    return cleanupSucceeded;
+  }
+
+  function handleAudioPlay() {
+    updatePlaybackState("playing");
+    logMedia("Silent audio playback event received; no count recorded.");
+  }
+
+  function handleAudioPause() {
+    updatePlaybackState("paused");
+    logMedia("Silent audio pause event received; no count recorded.");
+  }
+
+  function handleAudioError() {
+    setMediaStatus(
+      "Playback blocked or failed",
+      "The browser could not play the locally generated silent audio. Manual counting remains available."
+    );
+    logMedia("Silent audio reported an error.");
+  }
+
+  async function startSilentSession() {
+    if (!navigator.mediaSession || typeof navigator.mediaSession.setActionHandler !== "function") {
+      mediaMode = "unsupported";
+      setMediaStatus(
+        "Media Session API unsupported",
+        "This browser cannot register media action handlers. Manual counting remains fully functional."
+      );
+      return;
+    }
+
+    cleanupSilentSession();
+    setMediaStatus(
+      "Starting silent session",
+      "Preparing a locally generated silent audio loop after your explicit gesture."
+    );
+
+    silentAudioUrl = URL.createObjectURL(createSilentWavBlob());
+    silentAudio = document.createElement("audio");
+    silentAudio.src = silentAudioUrl;
+    silentAudio.loop = true;
+    silentAudio.playsInline = true;
+    silentAudio.preload = "auto";
+    silentAudio.setAttribute("aria-hidden", "true");
+    silentAudio.addEventListener("play", handleAudioPlay);
+    silentAudio.addEventListener("pause", handleAudioPause);
+    silentAudio.addEventListener("error", handleAudioError);
+    document.body.append(silentAudio);
+
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: "Earphone Counter (silent)",
+        artist: "Local Earphone Counter",
+        album: "Experimental media session"
+      });
+      if (!registerMediaHandlers()) {
+        throw new Error("Media Session action handlers are unavailable.");
+      }
+      await silentAudio.play();
+      updatePlaybackState("playing");
+      mediaSessionReady = true;
+      mediaMode = "active";
+      startMediaButton.disabled = true;
+      stopMediaButton.disabled = false;
+      setMediaStatus(
+        "Session active; physical button detection not yet verified",
+        "The silent loop is playing locally. Any delivered supported media action will count once, but Android Chrome may not forward every headset button."
+      );
+    } catch (error) {
+      console.warn("Unable to start silent media session.", error);
+      cleanupSilentSession();
+      mediaMode = "failed";
+      setMediaStatus(
+        "Playback blocked or failed",
+        "The browser did not allow the silent session to start. Manual counting remains fully functional."
+      );
+    }
+  }
+
+  function stopSilentSession() {
+    const cleanupSucceeded = cleanupSilentSession();
+    mediaMode = "stopped";
+    if (cleanupSucceeded) {
+      setMediaStatus(
+        "Session stopped",
+        "No media session is active. Stopping the session does not change the counter."
+      );
+    } else {
+      setMediaStatus(
+        "Session stopped or cleanup failed",
+        "The counter was not changed, but the browser rejected part of media-session cleanup."
+      );
+    }
+    logMedia("Silent media session stopped.");
+  }
 
   function recordCountOperation(delta, source = "manual") {
     const date = getLocalDateKey();
